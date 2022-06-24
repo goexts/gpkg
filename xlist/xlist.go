@@ -1,3 +1,4 @@
+// Package xlist copied the list and changes to generic.
 package xlist
 
 // Element is an element of a linked list.
