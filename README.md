@@ -1,3 +1,3 @@
 # GPKG
 
-Golang Generic Package
+GPKG is a golang Generic Package
