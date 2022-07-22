@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/ftwp/gpkg/xsync/xatomic"
 )
 
 // Map is like a Go map[interface{}]interface{} but is safe for concurrent use
@@ -37,7 +39,7 @@ type Map[K comparable, V any] struct {
 	// Entries stored in read may be updated concurrently without mu, but updating
 	// a previously-expunged entry requires that the entry be copied to the dirty
 	// map and unexpunged with mu held.
-	read atomic.Value // readOnly
+	read xatomic.Value[readOnly[K, V]] // readOnly
 
 	// dirty contains the portion of the map's contents that require mu to be
 	// held. To ensure that the dirty map can be promoted to the read map quickly,
@@ -102,14 +104,14 @@ func newEntry[V any](i V) *entry[V] {
 // value is present.
 // The ok result indicates whether value was found in the map.
 func (m *Map[K, V]) Load(key K) (value V, ok bool) {
-	read, _ := m.read.Load().(readOnly[K, V])
+	read := m.read.Load()
 	e, ok := read.m[key]
 	if !ok && read.amended {
 		m.mu.Lock()
 		// Avoid reporting a spurious miss if m.dirty got promoted while we were
 		// blocked on m.mu. (If further loads of the same key will not miss, it's
 		// not worth copying the dirty map for this key.)
-		read, _ = m.read.Load().(readOnly[K, V])
+		read = m.read.Load()
 		e, ok = read.m[key]
 		if !ok && read.amended {
 			e, ok = m.dirty[key]
@@ -136,13 +138,13 @@ func (e *entry[V]) load() (value V, ok bool) {
 
 // Store sets the value for a key.
 func (m *Map[K, V]) Store(key K, value V) {
-	read, _ := m.read.Load().(readOnly[K, V])
+	read := m.read.Load()
 	if e, ok := read.m[key]; ok && e.tryStore(&value) {
 		return
 	}
 
 	m.mu.Lock()
-	read, _ = m.read.Load().(readOnly[K, V])
+	read = m.read.Load()
 	if e, ok := read.m[key]; ok {
 		if e.unexpungeLocked() {
 			// The entry was previously expunged, which implies that there is a
@@ -200,7 +202,7 @@ func (e *entry[V]) storeLocked(i *V) {
 // The loaded result is true if the value was loaded, false if stored.
 func (m *Map[K, V]) LoadOrStore(key K, value V) (actual V, loaded bool) {
 	// Avoid locking if it's a clean hit.
-	read, _ := m.read.Load().(readOnly[K, V])
+	read := m.read.Load()
 	if e, ok := read.m[key]; ok {
 		actual, loaded, ok := e.tryLoadOrStore(value)
 		if ok {
@@ -209,7 +211,7 @@ func (m *Map[K, V]) LoadOrStore(key K, value V) (actual V, loaded bool) {
 	}
 
 	m.mu.Lock()
-	read, _ = m.read.Load().(readOnly[K, V])
+	read = m.read.Load()
 	if e, ok := read.m[key]; ok {
 		if e.unexpungeLocked() {
 			m.dirty[key] = e
@@ -268,11 +270,11 @@ func (e *entry[V]) tryLoadOrStore(i V) (actual V, loaded, ok bool) {
 // LoadAndDelete deletes the value for a key, returning the previous value if any.
 // The loaded result reports whether the key was present.
 func (m *Map[K, V]) LoadAndDelete(key K) (value V, loaded bool) {
-	read, _ := m.read.Load().(readOnly[K, V])
+	read := m.read.Load()
 	e, ok := read.m[key]
 	if !ok && read.amended {
 		m.mu.Lock()
-		read, _ = m.read.Load().(readOnly[K, V])
+		read = m.read.Load()
 		e, ok = read.m[key]
 		if !ok && read.amended {
 			e, ok = m.dirty[key]
@@ -323,14 +325,14 @@ func (m *Map[K, V]) Range(f func(key K, value V) bool) {
 	// present at the start of the call to Range.
 	// If read.amended is false, then read.m satisfies that property without
 	// requiring us to hold m.mu for a long time.
-	read, _ := m.read.Load().(readOnly[K, V])
+	read := m.read.Load()
 	if read.amended {
 		// m.dirty contains keys not in read.m. Fortunately, Range is already O(N)
 		// (assuming the caller does not break out early), so a call to Range
 		// amortizes an entire copy of the map: we can promote the dirty copy
 		// immediately!
 		m.mu.Lock()
-		read, _ = m.read.Load().(readOnly[K, V])
+		read = m.read.Load()
 		if read.amended {
 			read = readOnly[K, V]{m: m.dirty}
 			m.read.Store(read)
@@ -366,7 +368,7 @@ func (m *Map[K, V]) dirtyLocked() {
 		return
 	}
 
-	read, _ := m.read.Load().(readOnly[K, V])
+	read := m.read.Load()
 	m.dirty = make(map[K]*entry[V], len(read.m))
 	for k, e := range read.m {
 		if !e.tryExpungeLocked() {
