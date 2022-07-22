@@ -1,3 +1,3 @@
-# gpkg
+# GPKG
 
 Golang Generic Package
