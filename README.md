@@ -1,8 +1,8 @@
 # GPKG
 
-GPKG is a golang Generic Package.
-This package only changes the basics of Go into a generic implementation.
-This package can be used just like the base package.
+- GPKG is a golang Generic Package.
+- This package only changes the basics of Go into a generic implementation.
+- This package can be used just like the base package.
 
 ## xsync.Map is a golang sync.Map with generic key and value. ##
 ### Benchmark xsync.Map ###
