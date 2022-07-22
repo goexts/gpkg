@@ -2,7 +2,7 @@
 package glru
 
 import (
-	"github.com/ftwp/gopkg/xlist"
+	"github.com/ftwp/gpkg/xlist"
 )
 
 // Cache is an LRU cache. It is not safe for concurrent access.
