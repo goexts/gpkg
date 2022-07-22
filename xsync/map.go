@@ -122,8 +122,9 @@ func (m *Map[K, V]) Load(key K) (value V, ok bool) {
 		}
 		m.mu.Unlock()
 	}
+
 	if !ok {
-		return nil, false
+		return value, false
 	}
 	return e.load()
 }
@@ -131,7 +132,7 @@ func (m *Map[K, V]) Load(key K) (value V, ok bool) {
 func (e *entry[V]) load() (value V, ok bool) {
 	p := atomic.LoadPointer(&e.p)
 	if p == nil || p == expunged {
-		return nil, false
+		return value, false
 	}
 	return *(*V)(p), true
 }
@@ -243,7 +244,7 @@ func (m *Map[K, V]) LoadOrStore(key K, value V) (actual V, loaded bool) {
 func (e *entry[V]) tryLoadOrStore(i V) (actual V, loaded, ok bool) {
 	p := atomic.LoadPointer(&e.p)
 	if p == expunged {
-		return nil, false, false
+		return actual, false, false
 	}
 	if p != nil {
 		return *(*V)(p), true, true
@@ -259,7 +260,7 @@ func (e *entry[V]) tryLoadOrStore(i V) (actual V, loaded, ok bool) {
 		}
 		p = atomic.LoadPointer(&e.p)
 		if p == expunged {
-			return nil, false, false
+			return actual, false, false
 		}
 		if p != nil {
 			return *(*V)(p), true, true
@@ -289,7 +290,7 @@ func (m *Map[K, V]) LoadAndDelete(key K) (value V, loaded bool) {
 	if ok {
 		return e.delete()
 	}
-	return nil, false
+	return value, false
 }
 
 // Delete deletes the value for a key.
@@ -301,7 +302,7 @@ func (e *entry[V]) delete() (value V, ok bool) {
 	for {
 		p := atomic.LoadPointer(&e.p)
 		if p == nil || p == expunged {
-			return nil, false
+			return value, false
 		}
 		if atomic.CompareAndSwapPointer(&e.p, p, nil) {
 			return *(*V)(p), true
